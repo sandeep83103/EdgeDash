@@ -41,27 +41,21 @@ Orchestrator
 
 ### Built
 - [x] `edgedash/config.py` — `Config` dataclass loaded from `config.yaml`
-- [x] `edgedash/storage.py` — isolated storage module (SQLite, three tables)
-- [x] `edgedash/agents/base.py` — `Agent` protocol and `AgentResult` dataclass
-- [x] `edgedash/agents/mock_fetcher.py` — **temporary** mock; returns 12 fake
-      listings per run, 4 with stable IDs to prove deduplication
+- [x] `edgedash/storage.py` — isolated storage module (sole owner of the DB)
+- [x] `edgedash/agents/` — `Fetcher`, `Scorer`, `GapAnalyzer`, `Verifier`
+      (plus `MockFetcher` for offline development)
+- [x] `edgedash/sources/` — plug-in job sources: Arbeitnow, Apify (Indeed),
+      and Naukri.com, all behind a uniform `Source` interface
+- [x] `edgedash/llm.py` — single gateway for all LLM calls
 - [x] `edgedash/orchestrator.py` — `run_cycle`: reads state, builds plan,
-      dispatches agents, logs every run to `cycle_log`
+      dispatches agents, verifies output, logs every run to `cycle_log`
+- [x] `app.py` — Streamlit dashboard (profile editor, sources, test run,
+      schedule, clickable listings, ask-your-data)
+- [x] `.github/workflows/cycle.yml` — scheduled trigger (GitHub Actions cron)
 - [x] `run_cycle.py` — entry point
 
-### Week 2
-- [ ] Real `Fetcher` — live listings via job-board APIs or scraping
-- [ ] `Scorer` — fit scoring against your profile
-- [ ] Remove `MockFetcher`
-
-### Week 3
-- [ ] `GapAnalyzer` — surfaces skills you are missing vs. the market
-- [ ] `Verifier` — checks output quality and flags anomalies
-- [ ] Streamlit dashboard (read-only, pulls from Storage)
-
-### Week 4
+### Backlog
 - [ ] Migrate Storage backend from SQLite to hosted Postgres (one-file change)
-- [ ] Scheduled trigger (cron or cloud scheduler)
 
 ---
 
@@ -70,14 +64,13 @@ Orchestrator
 **Requirements:** Python 3.11 or later.
 
 ```
-pip install pyyaml==6.0.2
+pip install -r requirements.txt
 ```
-
-That is the only third-party dependency at this stage.
 
 **Configure your profile**
 
-Copy or edit `config.yaml` at the repo root:
+Edit `config.yaml` at the repo root (or use the dashboard's profile editor,
+which writes back to the same file):
 
 ```yaml
 target_role: "Data Analyst"
@@ -99,8 +92,17 @@ db_path: "edgedash.db"
 ```
 
 All user-specific values live here. No role, city, skill, or keyword is
-hardcoded anywhere in the source. Secrets (API keys, database URLs) go in
-environment variables, not in this file.
+hardcoded anywhere in the source.
+
+**Configure secrets**
+
+Copy `.env.example` to `.env` and fill in the values you need. Secrets
+(API keys, database URLs) live in environment variables only — never in
+`config.yaml` and never committed:
+
+- `GEMINI_API_KEY` — required when `llm_provider` is `gemini` (the default)
+- `APIFY_TOKEN` — required for the `apify` source; also used by `naukri`
+- `NAUKRI_APIFY_ACTOR` — optional override for the Naukri Apify actor
 
 **Run a cycle**
 
@@ -108,9 +110,50 @@ environment variables, not in this file.
 python run_cycle.py
 ```
 
-The first run initialises the database, fetches listings, and prints a
-cycle summary. Run it again immediately to see deduplication in action —
-the four stable mock listings will report "already in DB".
+The first run initialises the database, fetches listings, scores them,
+analyses gaps, verifies the output, and prints a cycle summary.
+
+---
+
+## Dashboard
+
+```
+streamlit run app.py
+```
+
+The dashboard reads through the storage module only — it never runs the
+scheduled cycle in its own process (the GitHub Actions scheduler does that).
+It offers:
+
+- **Search profile editor** — edit `target_role`, `target_city`, keywords,
+  and your skills; saves straight back to `config.yaml`.
+- **Sources searched** — shows which job portals the current cycle draws from.
+- **Test run** — launches one cycle as a separate subprocess for a manual
+  check, with a live percentage progress bar. This is not the scheduler.
+- **Automatic schedule** — pick the daily IST time the scheduler should fire;
+  the dashboard writes the matching UTC cron into the workflow (commit and
+  push for it to take effect).
+- **Top scored listings** — each row has an **Apply** link that opens the
+  posting on its source so you can apply directly.
+- **Top skill gaps** and an **Ask your data** natural-language box, both
+  answered only from the last verified cycle.
+
+---
+
+## Sources
+
+Every job board is a plug-in `Source` class behind a uniform interface; the
+Fetcher iterates them and contains no board-specific logic. Enable or disable
+sources in the `sources:` list in `config.yaml`.
+
+| Source      | Access                                            | Key needed        |
+|-------------|---------------------------------------------------|-------------------|
+| `arbeitnow` | Free public job-board API                         | none              |
+| `apify`     | Indeed via an Apify actor                         | `APIFY_TOKEN`     |
+| `naukri`    | Naukri.com via an Apify actor (best-effort direct fallback) | `APIFY_TOKEN` (recommended) |
+
+A source that fails or is missing its key logs the reason and skips itself —
+one dead board never stops the cycle.
 
 ---
 
