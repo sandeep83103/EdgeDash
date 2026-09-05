@@ -265,12 +265,25 @@ def _open_postgres():
     # Bounded connect so an unreachable DB fails fast (a few seconds) and the
     # dashboard can show its "database not reachable" status promptly, rather
     # than hanging on the default TCP timeout (rule 50).
-    conn = psycopg.connect(
-        _DATABASE_URL,
-        row_factory=dict_row,
-        autocommit=False,
-        connect_timeout=5,
-    )
+    #
+    # CRITICAL (rule 48): a psycopg connection error can embed the full DSN —
+    # including the password — in its message and traceback. We catch it and
+    # re-raise a redacted error naming only host:port/dbname, and use
+    # `from None` so the original DSN-bearing traceback is not chained. This
+    # keeps the connection string out of every error path: logs, CI artifacts,
+    # and any surface a stranger might see.
+    try:
+        conn = psycopg.connect(
+            _DATABASE_URL,
+            row_factory=dict_row,
+            autocommit=False,
+            connect_timeout=5,
+        )
+    except Exception as exc:  # noqa: BLE001 - redact everything, leak nothing
+        raise RuntimeError(
+            f"could not connect to Postgres at {_safe_pg_target(_DATABASE_URL)} "
+            f"({type(exc).__name__})"
+        ) from None
     return conn
 
 

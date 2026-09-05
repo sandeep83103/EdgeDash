@@ -1,0 +1,74 @@
+name: EdgeDash scheduled cycle
+
+# ── Schedule ──────────────────────────────────────────────────────────────────
+# Runs once daily.
+#   Local target : 06:00 Asia/Kolkata (IST, UTC+5:30)
+#   UTC cron     : 30 00 * * *   → 00:30 UTC  → 06:00 IST
+# GitHub Actions cron is ALWAYS in UTC. If you change your target local time,
+# recompute: UTC = local − 5:30. (e.g. 07:00 IST → 01:30 UTC → "30 1 * * *")
+on:
+  schedule:
+    - cron: "30 0 * * *"      # 00:30 UTC = 06:00 IST
+  workflow_dispatch:          # manual trigger from the Actions tab / gh CLI
+
+# Do not let two scheduled runs overlap; a new run waits rather than doubling
+# up (defensive alongside rule 51's idempotency).
+concurrency:
+  group: edgedash-cycle
+  cancel-in-progress: false
+
+# Least-privilege token: the job only needs to read the repo.
+permissions:
+  contents: read
+
+jobs:
+  run-cycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10        # rule 51: hard cap on the whole job
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Migrate database (idempotent — safe to repeat, rule 51)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python -m edgedash.storage --migrate
+
+      - name: Run one cycle
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        # Tee the app's own stdout to a log file for the artifact. We capture
+        # ONLY the program's console output (which prints host:port/db, never
+        # the URL or any key — rule 48), not the shell environment.
+        run: |
+          set -o pipefail
+          python run_cycle.py 2>&1 | tee cycle.log
+
+      - name: Upload cycle log
+        # Upload even if the cycle failed, so the log is always available.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cycle-log
+          path: cycle.log
+          retention-days: 14
+
+# ── Failure handling (rule 36 / rule 51) ──────────────────────────────────────
+# There is deliberately NO retry strategy here. run_cycle.py exits non-zero on
+# a partial/failed cycle, which fails the job and triggers GitHub's failure
+# notification. Retries are capped INSIDE the cycle (one retry, rule 36); a
+# workflow-level retry would multiply that and burn the free tier — so we
+# never add `continue-on-error`, a retry action, or a re-run trigger.
