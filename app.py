@@ -196,6 +196,44 @@ passing = data["passing"]
 total = data["total"]
 scored = data["scored"]
 
+
+def _render_status_banner() -> None:
+    """One-line green/amber/red freshness indicator (rule 50: fully wrapped —
+    a failure here logs server-side and simply shows nothing, never a trace)."""
+    try:
+        from datetime import datetime, timezone
+        from edgedash.health import dashboard_status
+
+        last_pass_at = None
+        if passing and passing.get("finished_at"):
+            raw = str(passing["finished_at"])
+            try:
+                dt = datetime.fromisoformat(raw)
+                last_pass_at = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+            except ValueError:
+                last_pass_at = None
+
+        verdicts = [c.get("verdict_passed") for c in cycles[:3]]
+        level, msg = dashboard_status(
+            now=datetime.now(timezone.utc),
+            last_pass_at=last_pass_at,
+            recent_verdicts=verdicts,
+        )
+        dot = {"green": "🟢", "amber": "🟡", "red": "🔴"}.get(level, "⚪")
+        if level == "green":
+            st.success(f"{dot} {msg}")
+        elif level == "amber":
+            st.warning(f"{dot} {msg}")
+        else:
+            st.error(f"{dot} {msg}")
+    except Exception:
+        logger.exception("dashboard: status banner failed to render")
+        # Deliberately show nothing — the banner is non-essential and must
+        # never take the page down.
+
+
+_render_status_banner()
+
 # ── Empty database: no cycles at all ─────────────────────────────────────────
 if not cycles:
     st.info(

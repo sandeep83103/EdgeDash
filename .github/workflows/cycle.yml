@@ -66,6 +66,17 @@ jobs:
           path: cycle.log
           retention-days: 14
 
+      - name: Health check
+        # Runs AFTER the cycle regardless of the cycle's result (if: always()),
+        # so it never blocks the cycle. It reads the resulting state and exits
+        # non-zero if the system is unhealthy — that fails the job and sends the
+        # GitHub notification. Output prints host:port/db only, never secrets.
+        if: always()
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python -m edgedash.health
+
 # ── Failure handling (rule 36 / rule 51) ──────────────────────────────────────
 # There is deliberately NO retry strategy here. run_cycle.py exits non-zero on
 # a partial/failed cycle, which fails the job and triggers GitHub's failure
