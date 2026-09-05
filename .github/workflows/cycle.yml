@@ -26,12 +26,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10        # rule 51: hard cap on the whole job
 
+    # Force UTF-8 for every step. The cycle prints box-drawing characters;
+    # a non-UTF-8 default stream encoding would crash it with exit 1.
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -60,7 +66,7 @@ jobs:
       - name: Upload cycle log
         # Upload even if the cycle failed, so the log is always available.
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: cycle-log
           path: cycle.log

@@ -41,10 +41,19 @@ class CheckResult:
 class HealthReport:
     healthy: bool
     checks: list[CheckResult]
+    # True when the system simply has not run yet (empty DB, no cycle ever).
+    # This is NOT an error — a first run should not fail CI just because there
+    # is no history to be healthy or unhealthy about yet.
+    not_initialised: bool = False
 
     def summary(self) -> str:
         good = sum(1 for c in self.checks if c.healthy)
         return f"{good}/{len(self.checks)} checks healthy"
+
+    def exit_ok(self) -> bool:
+        """A report is acceptable for CI if it is healthy OR simply not yet
+        initialised. Only a system that HAD data and degraded should fail."""
+        return self.healthy or self.not_initialised
 
 
 # ---------------------------------------------------------------------------
@@ -83,7 +92,23 @@ def assess(
         CheckResult("db_reachable", True, "reachable",
                     "db_reachable: OK — database read succeeded"),
     ]
-    return HealthReport(healthy=all(c.healthy for c in checks), checks=checks)
+
+    # A brand-new system that has never fetched a listing and never had a
+    # cycle pass is "not initialised", not "unhealthy". The first scheduled
+    # run legitimately starts from nothing, and CI must not treat that empty
+    # starting point as a failure. Only a system with SOME history that has
+    # gone stale or is failing verification is genuinely unhealthy.
+    not_initialised = (
+        newest_listing_at is None
+        and last_pass_at is None
+        and not any(v is not None for v in recent_verdicts)
+    )
+
+    return HealthReport(
+        healthy=all(c.healthy for c in checks),
+        checks=checks,
+        not_initialised=not_initialised,
+    )
 
 
 def _age_hours(then: datetime | None, now: datetime) -> float | None:
@@ -243,8 +268,14 @@ def main() -> int:
     rep = report(db)
     for c in rep.checks:
         print(c.message)
+
+    if rep.not_initialised:
+        print("health: NOT INITIALISED — no data yet; the first cycle has not "
+              "produced results. This is expected on a first run, not a failure.")
+        return 0
+
     print(f"health: {'HEALTHY' if rep.healthy else 'UNHEALTHY'} — {rep.summary()}")
-    return 0 if rep.healthy else 1
+    return 0 if rep.exit_ok() else 1
 
 
 if __name__ == "__main__":

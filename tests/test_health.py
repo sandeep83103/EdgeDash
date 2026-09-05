@@ -150,3 +150,27 @@ def test_report_unreachable_when_db_read_fails(monkeypatch):
     r = health.report("ignored", now=_NOW)
     assert r.healthy is False
     assert r.checks[0].name == "db_unreachable"
+
+
+# ── not_initialised: a brand-new empty system must not fail CI ────────────────
+
+def test_empty_system_is_not_initialised_and_exit_ok():
+    # No listings, no passing cycle, no verdicts → not an error, just new.
+    r = _assess(newest_listing_at=None, last_pass_at=None, recent_verdicts=[])
+    assert r.not_initialised is True
+    assert r.healthy is False        # nothing to be healthy about yet
+    assert r.exit_ok() is True       # ...but CI must not fail on a first run
+
+
+def test_stale_system_is_not_flagged_as_uninitialised():
+    # Had data + a passing cycle, then went stale → genuinely unhealthy.
+    r = _assess(newest_listing_at=_days(5), last_pass_at=_hrs(60),
+                recent_verdicts=[True, True, True])
+    assert r.not_initialised is False
+    assert r.exit_ok() is False
+
+
+def test_unreachable_is_not_treated_as_uninitialised():
+    r = _assess(db_reachable=False)
+    assert r.not_initialised is False
+    assert r.exit_ok() is False

@@ -22,6 +22,19 @@ Exit codes:
 import argparse
 import sys
 
+# Force UTF-8 on stdout/stderr before anything prints. The orchestrator's
+# console output uses box-drawing characters (═ ─ →); on a runner whose
+# default stream encoding is not UTF-8 (e.g. Windows cp1252) printing them
+# raises UnicodeEncodeError and crashes the whole cycle with exit 1. This
+# makes the entry point encoding-safe on every platform.
+for _stream in (sys.stdout, sys.stderr):
+    reconfigure = getattr(_stream, "reconfigure", None)
+    if reconfigure is not None:
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass
+
 from edgedash.config import load_config
 from edgedash.orchestrator import PARTIAL, run_cycle
 
