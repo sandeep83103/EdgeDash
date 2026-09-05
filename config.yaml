@@ -220,6 +220,7 @@ skill_aliases:
 sources:
   - arbeitnow
   - apify        # requires APIFY_TOKEN in .env (see .env.example)
+  - naukri       # Naukri.com — uses APIFY_TOKEN if set, else best-effort direct
 
 # Set to true to use the offline MockFetcher instead of live sources.
 # Useful for local development when you don't want network calls.

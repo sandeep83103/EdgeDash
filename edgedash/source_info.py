@@ -12,6 +12,7 @@ from __future__ import annotations
 _LABELS: dict[str, tuple[str, str]] = {
     "arbeitnow": ("Arbeitnow", "Free public job board — no API key needed"),
     "apify": ("Apify (Indeed scraper)", "Requires APIFY_TOKEN in .env"),
+    "naukri": ("Naukri.com", "India's largest job portal — via Apify, or best-effort direct"),
     "mock": ("Mock fetcher", "Offline sample data for local development"),
 }
 

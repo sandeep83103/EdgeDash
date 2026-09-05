@@ -327,17 +327,29 @@ def _profile_editor() -> None:
 
 
 def _test_run_button() -> None:
-    from edgedash.cycle_runner import run_cycle_subprocess
+    from edgedash.cycle_runner import run_cycle_streaming
 
     if st.button("Run a test cycle now", use_container_width=True):
-        with st.spinner("Running one cycle in a separate process…"):
-            result = run_cycle_subprocess()
-        if result.ok:
+        progress = st.progress(0, text="Starting the cycle…")
+        # The runner streams the subprocess's stage markers back; we map each
+        # stage to a percentage so the user sees real forward motion rather
+        # than an indeterminate spinner.
+        result = None
+        for pct, label, res in run_cycle_streaming():
+            progress.progress(pct, text=label)
+            if res is not None:
+                result = res
+        progress.progress(100, text="Done")
+
+        if result is not None and result.ok:
             st.success("Test cycle finished. Refresh to see new activity.")
         else:
             st.error("Test cycle did not complete cleanly. See the log below.")
         with st.expander("Run output"):
-            st.code(result.output or "(no output)", language="text")
+            st.code(
+                (result.output if result else "") or "(no output)",
+                language="text",
+            )
         st.cache_data.clear()
 
 
@@ -539,12 +551,25 @@ def _panel_top_listings():
     if not listings:
         st.info("No scored listings in the verified cycle.")
         return
-    st.dataframe([{
+    st.caption("Click **Apply** to open the posting on its source and apply.")
+    rows = [{
         "Score": l.get("fit_score"),
         "Title": l.get("title"),
         "Company": l.get("company"),
+        "Source": l.get("source"),
         "Reason": l.get("fit_reason") or "—",
-    } for l in listings], use_container_width=True, hide_index=True)
+        "Apply": l.get("url") or None,
+    } for l in listings]
+    st.dataframe(
+        rows,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Apply": st.column_config.LinkColumn(
+                "Apply", display_text="Apply ↗", help="Open the posting to apply"
+            ),
+        },
+    )
 
 
 def _panel_top_gaps():

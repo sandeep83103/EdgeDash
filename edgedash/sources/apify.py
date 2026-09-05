@@ -65,8 +65,14 @@ class ApifySource(Source):
 # HTTP call (POST with JSON body — extends get_json with body support)
 # ---------------------------------------------------------------------------
 
-def _call_actor(params: dict, body: dict) -> list[dict]:
-    """POST to the run-sync endpoint; return the dataset items list."""
+def _call_actor(
+    params: dict, body: dict, override_url: str | None = None
+) -> list[dict]:
+    """POST to a run-sync endpoint; return the dataset items list.
+
+    override_url lets another source (e.g. Naukri) reuse this shared,
+    retry-and-backoff-wrapped caller against a different actor, so all
+    network calls still go through one place (rule 11)."""
     import requests  # already a project dependency
 
     from edgedash.sources.http import (
@@ -85,7 +91,7 @@ def _call_actor(params: dict, body: dict) -> list[dict]:
             time.sleep(_BACKOFF_BASE ** attempt)
         try:
             resp = requests.post(
-                _RUN_SYNC_URL,
+                override_url or _RUN_SYNC_URL,
                 params=params,
                 json=body,
                 headers=headers,
