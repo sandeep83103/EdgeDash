@@ -1,0 +1,17 @@
+# Streamlit theme + server config for EdgeDash.
+# Committed so the deployed app matches local. Secrets never live here —
+# they go in .streamlit/secrets.toml (gitignored) or the Cloud UI.
+
+[theme]
+base = "dark"
+primaryColor = "#4da3ff"
+backgroundColor = "#0e1117"
+secondaryBackgroundColor = "#1b2029"
+textColor = "#e6e6e6"
+font = "sans serif"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false

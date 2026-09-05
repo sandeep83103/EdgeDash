@@ -1,0 +1,231 @@
+# EdgeDash user configuration
+# Edit these values to match your profile. Nothing here is a secret —
+# keep API keys and database credentials in environment variables instead.
+
+# ── Job search targeting ──────────────────────────────────────────────────────
+target_role: "Lead Electrical Design Engineer"
+target_city: "Remote"
+
+keywords:
+  # Discriminating phrases only. Avoid bare ambiguous words like "feed" or
+  # "lead" — they match "feedback", "newsfeed", "sales lead" etc. and flood
+  # the DB with irrelevant roles. Keep every keyword specific to the domain.
+  - Electrical Design Engineer
+  - Lead Electrical Engineer
+  - Electrical Engineer
+  - Substation Design
+  - Electrical Detail Design
+  - FEED electrical
+  - Electrical Department
+
+# ── Your current skills ───────────────────────────────────────────────────────
+# Used by GapAnalyzer to diff against what the market is asking for.
+my_skills:
+  - SLD
+  - Load List
+  - Power Layouts
+  - Lighting Layouts
+  - Earthing Layouts
+  - Hazardous Area Layouts
+  - Equipment Sizing
+  - Substation Design
+  - Electrical Heat Tracing
+  - Material Requisitions
+  - Technical Bid Evaluation
+  - Purchase Requisitions
+  - Vendor Document Review
+  - English
+
+experience_years: 21
+
+# ── Scoring threshold ─────────────────────────────────────────────────────────
+# Listings with a fit_score below this value are hidden from the dashboard.
+min_fit_score: 50
+
+# ── LLM ───────────────────────────────────────────────────────────────────────
+# Provider must be "gemini" or "ollama".
+# "gemini" requires GEMINI_API_KEY in .env (see .env.example).
+# "ollama" runs locally with no API key — install from https://ollama.ai
+llm_provider: "gemini"
+llm_model: "gemini-3.6-flash"
+
+# Maximum listings scored per cycle (rule 21 — caps cost + rate-limit risk).
+scoring_batch_size: 25
+
+# ── Planning thresholds & per-agent stop conditions ───────────────────────────
+fetch_interval_hours: 6      # only refetch after this many hours since last fetch
+fetch_max_pages:      5      # fetch stops after this many source pages
+fetch_max_listings:   200    # fetch stops after collecting this many listings
+score_max_seconds:    120    # scoring run wall-clock budget
+analyse_max_seconds:  60     # gap-analysis run wall-clock budget
+
+# ── Verification thresholds ───────────────────────────────────────────────────
+# Each threshold names the failure mode it is designed to catch (rule 39).
+# The Verifier judges plausibility, never correctness (rule 35).
+min_score_spread:          10   # catches score inflation — all scores bunched into a narrow band
+min_score_stdev:           5    # catches score inflation — distribution has no real spread
+max_empty_extraction_pct:  20   # catches a broken extractor — too many listings with no skills (percent)
+max_skills_per_listing:    20   # catches a model returning a whole sentence as "skills"
+min_gap_sample:            3    # catches ranking a rumour — top gap computed from too few listings
+max_data_age_days:         3    # catches stale data — newest listing older than this many days
+score_spread_gain:         2.5  # contrast-stretch gain used ONLY on a retry after score_spread failed (>1 widens; won't rescue a truly flat batch — that goes degraded)
+
+# ── Ask-box abuse guards ──────────────────────────────────────────────────────
+daily_question_cap:        200  # global cap on NL questions per UTC day — protects the free tier; ask box disables when hit, dashboard stays up
+
+# ── Seniority & scoring weights ───────────────────────────────────────────────
+# target_seniority: one of junior | mid | senior | lead
+target_seniority: "senior"
+
+# Weights must sum to 1.0. Tune these to reprioritise what matters to you.
+weight_skill_match:   0.45   # fraction of required skills you already have
+weight_seniority_fit: 0.25   # how well the role's level matches yours
+weight_location_fit:  0.15   # remote / city match
+weight_recency:       0.15   # how recently the listing was posted
+
+# ── Skill aliases ─────────────────────────────────────────────────────────────
+# THIS MAP IS YOURS TO EDIT. Add entries as you see raw skill strings in your
+# data. Run  python -m edgedash.skills --audit  to find collisions worth adding.
+# Format: "raw string (lowercased)": "canonical form"
+# The canonical form is also lowercase — it will be compared against my_skills.
+skill_aliases:
+
+  # ── Drawings & documentation ───────────────────────────────────────────────
+  "single line diagram": "sld"
+  "single-line diagram": "sld"
+  "single line drawings": "sld"
+  "sld drawings": "sld"
+  "one line diagram": "sld"
+  "one-line diagram": "sld"
+
+  "equipment layout": "power layouts"
+  "electrical layout": "power layouts"
+  "cable routing": "power layouts"
+  "cable layout": "power layouts"
+
+  "lighting design": "lighting layouts"
+  "lighting calculations": "lighting layouts"
+  "dialux": "lighting layouts"
+
+  "earthing design": "earthing layouts"
+  "grounding design": "earthing layouts"
+  "grounding layout": "earthing layouts"
+  "earth grid design": "earthing layouts"
+  "earthing grid": "earthing layouts"
+
+  "hazardous area classification": "hazardous area layouts"
+  "area classification": "hazardous area layouts"
+  "hazardous area": "hazardous area layouts"
+  "atex": "hazardous area layouts"
+  "iecex": "hazardous area layouts"
+  "zone classification": "hazardous area layouts"
+
+  # ── Electrical calculations & sizing ──────────────────────────────────────
+  "electrical sizing": "equipment sizing"
+  "transformer sizing": "equipment sizing"
+  "cable sizing": "equipment sizing"
+  "motor sizing": "equipment sizing"
+  "load flow": "equipment sizing"
+  "short circuit calculation": "equipment sizing"
+  "protection coordination": "equipment sizing"
+  "load calculation": "equipment sizing"
+  "electrical calculations": "equipment sizing"
+
+  # ── Substation ────────────────────────────────────────────────────────────
+  "substation engineering": "substation design"
+  "hv substation": "substation design"
+  "mv substation": "substation design"
+  "lv substation": "substation design"
+  "switchgear design": "substation design"
+  "power distribution": "substation design"
+  "mv/lv distribution": "substation design"
+
+  # ── Heat tracing ──────────────────────────────────────────────────────────
+  "heat tracing": "electrical heat tracing"
+  "electric heat tracing": "electrical heat tracing"
+  "eht": "electrical heat tracing"
+  "trace heating": "electrical heat tracing"
+  "heat trace": "electrical heat tracing"
+
+  # ── Procurement & documentation ───────────────────────────────────────────
+  "material take-off": "material requisitions"
+  "material takeoff": "material requisitions"
+  "mto": "material requisitions"
+  "bill of materials": "material requisitions"
+  "bom": "material requisitions"
+  "material requisition": "material requisitions"
+  "mrs": "material requisitions"
+
+  "technical evaluation": "technical bid evaluation"
+  "bid evaluation": "technical bid evaluation"
+  "tbe": "technical bid evaluation"
+  "vendor evaluation": "technical bid evaluation"
+
+  "purchase requisition": "purchase requisitions"
+  "pr": "purchase requisitions"
+  "procurement requisition": "purchase requisitions"
+
+  "vendor document review": "vendor document review"
+  "vdr": "vendor document review"
+  "vendor drawing review": "vendor document review"
+  "supplier document review": "vendor document review"
+
+  # ── Load list ─────────────────────────────────────────────────────────────
+  "electrical load list": "load list"
+  "load schedule": "load list"
+  "load summary": "load list"
+
+  # ── Standards & codes commonly listed in JDs ──────────────────────────────
+  "iec standards": "iec"
+  "iec 60364": "iec"
+  "iec 61000": "iec"
+  "nec": "nec"
+  "national electrical code": "nec"
+  "ieee standards": "ieee"
+  "api standards": "api"
+
+  # ── Software tools common in electrical EPC roles ────────────────────────
+  "etap software": "etap"
+  "dialux evo": "dialux"
+  "eplan electric p8": "eplan"
+  "eplan p8": "eplan"
+  "autocad electrical": "autocad electrical"
+  "autocad elec": "autocad electrical"
+  "spel": "spel"
+  "amtech": "amtech"
+
+  # ── Languages ──────────────────────────────────────────────────────────────
+  "englisch": "english"
+  "english language": "english"
+  "fluent english": "english"
+  "english (fluent)": "english"
+  "english proficiency": "english"
+  "good english": "english"
+  "written and spoken english": "english"
+  "business english": "english"
+
+  # ── Project engineering generics ──────────────────────────────────────────
+  "feed study": "feed"
+  "front end engineering": "feed"
+  "front-end engineering design": "feed"
+  "concept design": "feed"
+  "detailed design": "detail design"
+  "detail engineering": "detail design"
+  "epc": "epc"
+  "engineering procurement construction": "epc"
+  "epcm": "epcm"
+
+# ── Sources ───────────────────────────────────────────────────────────────────
+# Names must match entries in the SOURCES registry (edgedash/sources/base.py).
+sources:
+  - arbeitnow
+  - apify        # requires APIFY_TOKEN in .env (see .env.example)
+
+# Set to true to use the offline MockFetcher instead of live sources.
+# Useful for local development when you don't want network calls.
+use_mock_fetcher: false
+
+# ── Storage ───────────────────────────────────────────────────────────────────
+# Relative path from the repo root. Week-4 migration: replace with a
+# DATABASE_URL env var loaded in settings and remove this field.
+db_path: "edgedash.db"
