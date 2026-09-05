@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 
 import streamlit as st
 
@@ -77,10 +78,26 @@ def _top_gaps(db: str) -> list[dict]:
 # Small formatting helpers (pure, cannot raise on well-formed input)
 # ---------------------------------------------------------------------------
 
+# Timestamps are stored as ISO-8601 UTC. The dashboard is viewed from India,
+# so display them in IST (UTC+5:30). Storage stays UTC — this is display only.
+_IST_OFFSET = timedelta(hours=5, minutes=30)
+
+
 def _fmt_ts(raw: str | None) -> str:
+    """Format a stored UTC ISO-8601 timestamp for display in IST.
+
+    Falls back to the raw value on any parse failure — a bad timestamp must
+    never break the page (rule 50)."""
     if not raw:
         return "—"
-    return str(raw)[:19].replace("T", " ") + " UTC"
+    try:
+        dt = datetime.fromisoformat(str(raw))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        ist = dt.astimezone(timezone.utc) + _IST_OFFSET
+        return ist.strftime("%Y-%m-%d %H:%M:%S") + " IST"
+    except (ValueError, TypeError):
+        return str(raw)[:19].replace("T", " ") + " UTC"
 
 
 def _agents_ran(cycle: dict) -> str:
@@ -201,7 +218,6 @@ def _render_status_banner() -> None:
     """One-line green/amber/red freshness indicator (rule 50: fully wrapped —
     a failure here logs server-side and simply shows nothing, never a trace)."""
     try:
-        from datetime import datetime, timezone
         from edgedash.health import dashboard_status
 
         last_pass_at = None
