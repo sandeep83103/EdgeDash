@@ -5,4 +5,7 @@ requests==2.32.3
 python-dotenv==1.0.1
 google-generativeai==0.8.3
 streamlit==1.40.2
-psycopg[binary]==3.2.3
+# Range (not an exact pin) so the platform can pick a binary wheel matching
+# its Python (Streamlit Cloud currently runs 3.14, which has no 3.2.3 wheel —
+# oldest is 3.2.10). Stays on the 3.2 line for a stable, tested API surface.
+psycopg[binary]>=3.2.10,<3.3
