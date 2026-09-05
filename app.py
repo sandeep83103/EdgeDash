@@ -1,13 +1,23 @@
-"""EdgeDash — agent activity dashboard (Streamlit, read-only).
+"""EdgeDash — agent activity dashboard (Streamlit).
 
-This app READS through the storage module only. It never writes and never
-runs a cycle — the scheduler writes, the dashboard reads. There is no
-"run cycle" button by design (rule 49).
+READS through the storage module only; it never writes cycle data and never
+runs a cycle in its own process (rule 49). The scheduler — the GitHub Actions
+workflow — is the separate process that runs cycles automatically.
 
-Hostile-startup hardening (rule 50): the page always renders. If the database
-is missing, unreachable, or mid-migration, or if any single panel fails, the
-user sees a clear status message — never a stack trace. Failure detail is
-logged server-side only. No secret is ever printed or rendered (rule 48).
+The dashboard adds three operator conveniences that respect that separation:
+
+  1. Profile editor — edits the four user-profile fields and writes them back
+     to config.yaml, keeping config the single source of truth (rule 3). It
+     never stores user data anywhere else.
+  2. Test run — a manual, one-off cycle launched as a SEPARATE subprocess
+     (never in-process), for on-demand checks. This is not the scheduler.
+  3. Schedule — asks the user what daily time the automatic scheduler should
+     fire, and writes that into the workflow cron. The dashboard configures
+     *when* the separate process runs; it never runs the scheduled cycle.
+
+Hostile-startup hardening (rule 50): the page always renders. Missing,
+unreachable, or mid-migration DBs, and any single failing panel, produce a
+clear status message — never a stack trace. No secret is printed (rule 48).
 
 Run it with:
     streamlit run app.py
@@ -26,7 +36,7 @@ from edgedash import storage
 
 logger = logging.getLogger("edgedash.dashboard")
 
-# Per-session rate limit for the ask box (rule 1): max N questions per window.
+# Per-session rate limit for the ask box: max N questions per window.
 _ASK_MAX_PER_WINDOW = 10
 _ASK_WINDOW_SECONDS = 10 * 60
 
@@ -34,14 +44,12 @@ _ASK_WINDOW_SECONDS = 10 * 60
 # within a few seconds of a scheduler-written cycle.
 _TTL = 10  # seconds
 
-# Where "no cycles yet" points people. Cosmetic; safe to show.
 _FIRST_RUN_HINT = "the next scheduled run"
 _GITHUB_URL = "https://github.com/sandeep83103/EdgeDash"
 
 
 # ---------------------------------------------------------------------------
 # Cached read functions (read-only; storage module is the only DB door).
-# These may raise if the DB is unreachable — every caller wraps them.
 # ---------------------------------------------------------------------------
 
 @st.cache_data(ttl=_TTL)
@@ -78,16 +86,14 @@ def _top_gaps(db: str) -> list[dict]:
 # Small formatting helpers (pure, cannot raise on well-formed input)
 # ---------------------------------------------------------------------------
 
-# Timestamps are stored as ISO-8601 UTC. The dashboard is viewed from India,
-# so display them in IST (UTC+5:30). Storage stays UTC — this is display only.
+# Storage stays UTC; the dashboard is viewed from India, so display in IST.
 _IST_OFFSET = timedelta(hours=5, minutes=30)
 
 
 def _fmt_ts(raw: str | None) -> str:
     """Format a stored UTC ISO-8601 timestamp for display in IST.
 
-    Falls back to the raw value on any parse failure — a bad timestamp must
-    never break the page (rule 50)."""
+    Falls back to the raw value on any parse failure (rule 50)."""
     if not raw:
         return "—"
     try:
@@ -138,8 +144,6 @@ def _outcome(cycle: dict) -> str:
 
 # ---------------------------------------------------------------------------
 # Guarded data load — the ONE place the DB is touched for the main panels.
-# Returns (data, error_kind). error_kind is None on success, else a short
-# machine tag we map to a friendly message. Never re-raises.
 # ---------------------------------------------------------------------------
 
 def _load_dashboard_data():
@@ -154,8 +158,6 @@ def _load_dashboard_data():
         passing = _last_passing(db)
         total, scored = _counts(db)
     except Exception:
-        # Missing/unreachable/mid-migration DB all land here. Log detail
-        # server-side; the user gets a clean status. Never surface `exc`.
         logger.exception("dashboard: database read failed during startup")
         return None, "unreachable"
 
@@ -169,11 +171,215 @@ def _load_dashboard_data():
 
 
 # ---------------------------------------------------------------------------
-# Page
+# Page setup + styling
 # ---------------------------------------------------------------------------
 
-st.set_page_config(page_title="EdgeDash — Agent Activity", layout="wide")
-st.title("EdgeDash — Agent Activity")
+st.set_page_config(
+    page_title="EdgeDash — Career Intelligence",
+    page_icon="🛰️",
+    layout="wide",
+)
+
+# A little polish on top of the dark theme in .streamlit/config.toml.
+st.markdown(
+    """
+    <style>
+      .block-container { padding-top: 2.2rem; max-width: 1400px; }
+      div[data-testid="stMetric"] {
+          background: linear-gradient(160deg, #1b2029 0%, #141821 100%);
+          border: 1px solid #262d3a;
+          border-radius: 14px;
+          padding: 14px 18px;
+      }
+      div[data-testid="stMetricValue"] { font-size: 1.5rem; }
+      section[data-testid="stSidebar"] { border-right: 1px solid #222835; }
+      .ed-hero {
+          padding: 22px 26px; border-radius: 16px; margin-bottom: 10px;
+          background: linear-gradient(120deg, #12213b 0%, #101722 60%);
+          border: 1px solid #24344d;
+      }
+      .ed-hero h1 { margin: 0; font-size: 1.8rem; }
+      .ed-hero p  { margin: 6px 0 0; color: #9fb2c9; }
+      .ed-chip {
+          display: inline-block; padding: 4px 12px; margin: 3px 6px 3px 0;
+          border-radius: 999px; background: #1b2735; border: 1px solid #2b3d55;
+          color: #cfe0f5; font-size: 0.85rem;
+      }
+      .ed-source {
+          padding: 12px 16px; border-radius: 12px; margin-bottom: 8px;
+          background: #161b24; border: 1px solid #26303f;
+      }
+      .ed-source b { color: #7fc0ff; }
+      .ed-source span { color: #8ea3bd; font-size: 0.85rem; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    """
+    <div class="ed-hero">
+      <h1>🛰️ EdgeDash — Career Intelligence</h1>
+      <p>Live job matching, skill-gap analysis, and self-verified cycles.</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# ---------------------------------------------------------------------------
+# Sidebar — profile editor, sources, test run, schedule
+# ---------------------------------------------------------------------------
+
+def _sidebar() -> None:
+    """All operator controls live here so the main area stays a clean report."""
+    from edgedash.source_info import describe_sources
+
+    with st.sidebar:
+        st.header("⚙️ Search profile")
+        st.caption(
+            "Edits save to config.yaml — the single source of truth. "
+            "Changes apply on the next cycle."
+        )
+        _profile_editor()
+
+        st.divider()
+        st.subheader("🔌 Sources searched")
+        try:
+            cfg = load_config()
+            rows = describe_sources(cfg.sources, cfg.use_mock_fetcher)
+            for r in rows:
+                st.markdown(
+                    f'<div class="ed-source"><b>{r["name"]}</b><br>'
+                    f'<span>{r["note"]}</span></div>',
+                    unsafe_allow_html=True,
+                )
+        except Exception:
+            logger.exception("dashboard: could not list sources")
+            st.info("Source list unavailable right now.")
+
+        st.divider()
+        st.subheader("▶️ Test run")
+        st.caption(
+            "Runs one cycle now, as a one-off test in a separate process. "
+            "This is NOT the automatic scheduler — it's for manual checks."
+        )
+        _test_run_button()
+
+        st.divider()
+        st.subheader("⏰ Automatic schedule")
+        st.caption(
+            "The agent runs automatically via the scheduler (GitHub Actions). "
+            "Pick the daily time it should fire."
+        )
+        _schedule_editor()
+
+
+def _profile_editor() -> None:
+    from edgedash.config_editor import ProfileValues, read_profile, write_profile
+
+    try:
+        profile = read_profile()
+    except Exception:
+        logger.exception("dashboard: could not read profile from config.yaml")
+        st.warning("Couldn't read config.yaml right now.")
+        return
+
+    with st.form("profile_form"):
+        target_role = st.text_input("Target role", value=profile.target_role)
+        target_city = st.text_input("Target city", value=profile.target_city)
+        keywords_text = st.text_area(
+            "Role keywords (one per line)",
+            value="\n".join(profile.keywords),
+            height=140,
+            help="Specific phrases only — avoid ambiguous single words.",
+        )
+        skills_text = st.text_area(
+            "My skills (one per line)",
+            value="\n".join(profile.my_skills),
+            height=180,
+        )
+        submitted = st.form_submit_button("💾 Save profile", use_container_width=True)
+
+    if not submitted:
+        return
+
+    keywords = [ln.strip() for ln in keywords_text.splitlines() if ln.strip()]
+    skills = [ln.strip() for ln in skills_text.splitlines() if ln.strip()]
+
+    try:
+        write_profile(ProfileValues(
+            target_role=target_role.strip(),
+            target_city=target_city.strip(),
+            keywords=keywords,
+            my_skills=skills,
+        ))
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+    except Exception:
+        logger.exception("dashboard: failed to write profile to config.yaml")
+        st.error("Couldn't save the profile. Please try again.")
+        return
+
+    st.cache_data.clear()
+    st.success("Saved to config.yaml. It applies on the next cycle.")
+
+
+def _test_run_button() -> None:
+    from edgedash.cycle_runner import run_cycle_subprocess
+
+    if st.button("Run a test cycle now", use_container_width=True):
+        with st.spinner("Running one cycle in a separate process…"):
+            result = run_cycle_subprocess()
+        if result.ok:
+            st.success("Test cycle finished. Refresh to see new activity.")
+        else:
+            st.error("Test cycle did not complete cleanly. See the log below.")
+        with st.expander("Run output"):
+            st.code(result.output or "(no output)", language="text")
+        st.cache_data.clear()
+
+
+def _schedule_editor() -> None:
+    from edgedash.schedule_editor import read_current_cron, write_daily_schedule
+
+    try:
+        current = read_current_cron()
+    except Exception:
+        logger.exception("dashboard: could not read the schedule")
+        current = None
+
+    st.write(f"Current cron (UTC): `{current or 'unknown'}`")
+
+    col_h, col_m = st.columns(2)
+    hour = col_h.number_input("Hour (IST)", min_value=0, max_value=23, value=6)
+    minute = col_m.number_input("Minute (IST)", min_value=0, max_value=59, value=0)
+
+    if st.button("Set daily schedule", use_container_width=True):
+        try:
+            new_cron = write_daily_schedule(int(hour), int(minute))
+        except Exception:
+            logger.exception("dashboard: failed to update the schedule")
+            st.error("Couldn't update the schedule file.")
+            return
+        st.success(
+            f"Schedule set to {int(hour):02d}:{int(minute):02d} IST "
+            f"(UTC cron `{new_cron}`)."
+        )
+        st.info(
+            "Commit and push the change to `.github/workflows/cycle.yml` for "
+            "the scheduler to pick it up. The dashboard only edits the "
+            "schedule — the separate scheduler process runs the cycles."
+        )
+
+
+_sidebar()
+
+
+# ---------------------------------------------------------------------------
+# Main report area
+# ---------------------------------------------------------------------------
 
 data, err = _load_dashboard_data()
 
@@ -184,7 +390,7 @@ def _render_footer(passing: dict | None) -> None:
     st.caption(
         f"Last successful cycle: {last}  ·  "
         f"[GitHub repo]({_GITHUB_URL})  ·  "
-        "Read-only dashboard — the scheduler writes; this view only reads."
+        "Read-only report — the scheduler writes; this view only reads."
     )
 
 
@@ -215,8 +421,7 @@ scored = data["scored"]
 
 
 def _render_status_banner() -> None:
-    """One-line green/amber/red freshness indicator (rule 50: fully wrapped —
-    a failure here logs server-side and simply shows nothing, never a trace)."""
+    """One-line green/amber/red freshness indicator (rule 50: fully wrapped)."""
     try:
         from edgedash.health import dashboard_status
 
@@ -244,8 +449,6 @@ def _render_status_banner() -> None:
             st.error(f"{dot} {msg}")
     except Exception:
         logger.exception("dashboard: status banner failed to render")
-        # Deliberately show nothing — the banner is non-essential and must
-        # never take the page down.
 
 
 _render_status_banner()
@@ -254,7 +457,9 @@ _render_status_banner()
 if not cycles:
     st.info(
         f"No cycles yet — the first run is scheduled for {_FIRST_RUN_HINT}. "
-        "Activity, matches, and skill gaps will appear here once it completes."
+        "Use the **Test run** button in the sidebar to trigger one now, or set "
+        "your profile and schedule first. Matches and skill gaps appear here "
+        "once a cycle completes."
     )
     _render_footer(passing)
     st.stop()
@@ -383,9 +588,7 @@ with right:
 st.divider()
 
 
-# ── 4. Ask your data ────────────────────────────────────────────────────────
-# The data panels above have already rendered. Nothing in this section can
-# take the dashboard down — only the ask box itself degrades.
+# ── Ask your data ────────────────────────────────────────────────────────────
 def _panel_ask():
     st.subheader("Ask your data")
     st.caption(
@@ -405,7 +608,6 @@ def _panel_ask():
     def _record() -> None:
         st.session_state.setdefault("ask_stamps", []).append(time.time())
 
-    # Daily cap: disable the box but keep the dashboard up (rule 3).
     try:
         from edgedash.query.ask import daily_cap_reached
         capped = daily_cap_reached()
@@ -456,8 +658,6 @@ def _panel_ask():
         try:
             answer = _ask(question)
         except Exception:
-            # Generic message only — never surface the exception text, which
-            # could carry configuration detail (rule 48/50).
             logger.exception("dashboard: ask() failed")
             st.error("Couldn't answer that right now. Please try again shortly.")
 
