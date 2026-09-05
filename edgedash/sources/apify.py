@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 
 from edgedash.sources.base import Source, register
 from edgedash.sources.http import SourceError, get_json
+from edgedash.sources.relevance import filter_relevant
 
 if TYPE_CHECKING:
     from edgedash.config import Config
@@ -58,7 +59,14 @@ class ApifySource(Source):
             f"  [apify] {len(raw_items)} raw results for "
             f'"{search_term}".'
         )
-        return [_normalise(item) for item in raw_items]
+        normalised = [_normalise(item) for item in raw_items]
+        # The actor searches on the role term and does not filter by keyword,
+        # so it can return off-target roles. Keep only keyword-relevant rows.
+        relevant = filter_relevant(normalised, config)
+        dropped = len(normalised) - len(relevant)
+        if dropped:
+            print(f"  [apify] dropped {dropped} off-keyword listing(s).")
+        return relevant
 
 
 # ---------------------------------------------------------------------------

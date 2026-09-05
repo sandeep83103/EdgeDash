@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 
 from edgedash.sources.base import Source, register
 from edgedash.sources.http import SourceError, get_json
+from edgedash.sources.relevance import filter_relevant
 
 if TYPE_CHECKING:
     from edgedash.config import Config
@@ -79,7 +80,8 @@ class NaukriSource(Source):
             return []
 
         print(f"  [naukri] {len(raw_items)} raw results via apify.")
-        return [_normalise(_from_apify(item)) for item in raw_items]
+        normalised = [_normalise(_from_apify(item)) for item in raw_items]
+        return _keep_relevant(normalised, config)
 
     # ── Path 2: direct internal endpoint (best-effort) ───────────────────────
     def _fetch_direct(self, config: "Config") -> list[dict]:
@@ -104,7 +106,22 @@ class NaukriSource(Source):
 
         jobs = data.get("jobDetails", []) if isinstance(data, dict) else []
         print(f"  [naukri] {len(jobs)} raw results via direct endpoint.")
-        return [_normalise(_from_direct(j)) for j in jobs]
+        normalised = [_normalise(_from_direct(j)) for j in jobs]
+        return _keep_relevant(normalised, config)
+
+
+# ---------------------------------------------------------------------------
+# Relevance filter — the actor/endpoint does not filter by keyword, so an
+# off-target role (e.g. a software job) can come back. Keep only rows that
+# match a configured keyword, mirroring the other sources.
+# ---------------------------------------------------------------------------
+
+def _keep_relevant(rows: list[dict], config: "Config") -> list[dict]:
+    relevant = filter_relevant(rows, config)
+    dropped = len(rows) - len(relevant)
+    if dropped:
+        print(f"  [naukri] dropped {dropped} off-keyword listing(s).")
+    return relevant
 
 
 # ---------------------------------------------------------------------------

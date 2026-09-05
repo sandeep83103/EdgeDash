@@ -685,6 +685,22 @@ def clear_score(path: str | Path, listing_id: str) -> bool:
         return cursor.rowcount > 0
 
 
+def delete_listings(path: str | Path, listing_ids: list[str]) -> int:
+    """Delete the given listings by id. Returns the number of rows removed.
+
+    Used to purge listings that no longer match the search profile (e.g. an
+    off-keyword role fetched before keyword filtering was in place). All
+    deletes go through this module so the database stays centralised (rule 2).
+    """
+    if not listing_ids:
+        return 0
+    placeholders = ",".join("?" for _ in listing_ids)
+    sql = f"DELETE FROM listings WHERE id IN ({placeholders})"
+    with _connect(path) as conn:
+        cursor = conn.execute(sql, tuple(listing_ids))
+        return cursor.rowcount
+
+
 def clear_all_scores(path: str | Path) -> int:
     """Clear score fields on every listing. Returns the count of rows updated."""
     sql = """
